@@ -21,7 +21,7 @@
             <h3>Mint</h3>
           </td>
           <td>
-            <button v-on:click="mint">mint</button>
+            <button v-on:click="mint" :disabled="loading">mint</button>
           </td>
         </tr>
 
@@ -31,7 +31,7 @@
           </td>
           <td>
             <input v-model="tokenId" placeholder="Token Id">
-            <button v-on:click="getOwner">query</button>
+            <button v-on:click="getOwner" :disabled="loading">query</button>
           </td>
         </tr>
 
@@ -42,11 +42,15 @@
           <td>
             <input v-model="receiver" placeholder="Receiver">
             <input v-model="transferTokenId" placeholder="Token Id">
-            <button v-on:click="transfer">Transfer</button>
+            <button v-on:click="transfer" :disabled="loading">Transfer</button>
           </td>
         </tr>
 
       </table>
+
+      <p class="output">
+        {{ loading ? "calling smart contract ..." : output }}
+      </p>
 
     </div>
 
@@ -111,7 +115,9 @@ export default {
     wallet: null,
     tokenId: null,
     receiver: null,
-    transferTokenId: null
+    transferTokenId: null,
+    output: null,
+    loading: false
   }),
   async mounted () {
     const near = await initNear()
@@ -132,33 +138,57 @@ export default {
       window.location.replace(window.location.origin + window.location.pathname)
     },
     async mint () {
-      const tokenId = await this.contract.mint_to(
-        { owner_id: this.currentUser.accountId },
-        BOATLOAD_OF_GAS
-      )
-      console.log('minted', tokenId)
-      alert(`Minted token ${tokenId}`)
+      try {
+        this.loading = true
+
+        const tokenId = await this.contract.mint_to(
+          { owner_id: this.currentUser.accountId },
+          BOATLOAD_OF_GAS
+        )
+        console.log('minted', tokenId)
+        this.output = `Minted token ${tokenId}`
+      } finally {
+        this.loading = false
+      }
     },
     async getOwner () {
       try {
+        this.loading = true
+
         const owner = await this.contract.get_token_owner({
           token_id: this.tokenId
         })
 
-        alert(`Owner is ${owner}`)
+        this.output = `Owner is ${owner}`
       } catch (err) {
-        console.log(err)
+        if (err.message.includes('not present in the storage')) {
+          this.output = 'Error: Token not exist'
+        } else {
+          console.log(err)
+        }
+      } finally {
+        this.loading = false
       }
     },
     async transfer () {
       try {
+        this.loading = true
+
         await this.contract.transfer({
           new_owner_id: this.receiver,
           token_id: this.transferTokenId
         })
-        alert(`Token ${this.transferTokenId} transferred to ${this.receiver}`)
+        this.output = `Token ${this.transferTokenId} transferred to ${this.receiver}`
       } catch (err) {
-        console.log(err)
+        if (err.message.includes('not present in the storage')) {
+          this.output = 'Error: Token not exist'
+        } else if (err.message.includes('Token is not owned by the caller')) {
+          this.output = 'Error: Token not owned by you'
+        } else {
+          console.log(err)
+        }
+      } finally {
+        this.loading = false
       }
     }
   }
@@ -179,9 +209,10 @@ export default {
 }
 table {
   margin: auto;
+  width: 600px;
 }
 table, td {
   border: 1px solid black;
-    border-collapse: collapse;
+  border-collapse: collapse;
 }
 </style>
