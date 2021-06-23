@@ -1,5 +1,5 @@
 /* eslint-disable */
-const CONTRACT_NAME = 'dev-1624083697619-71263014983569'
+const CONTRACT_NAME = 'dev-1624447113704-76243351532500'
 
 export default function getConfig (env) {
   switch (env) {

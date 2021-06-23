@@ -21,17 +21,19 @@
             <h3>Mint</h3>
           </td>
           <td>
+            <input v-model="mintSupply" placeholder="Token Supply">
             <button v-on:click="mint" :disabled="loading">mint</button>
           </td>
         </tr>
 
         <tr>
           <td>
-            <h3>Get Owner</h3>
+            <h3>Get Shares</h3>
           </td>
           <td>
             <input v-model="tokenId" placeholder="Token Id">
-            <button v-on:click="getOwner" :disabled="loading">query</button>
+            <input v-model="queryAccountId">
+            <button v-on:click="getShares" :disabled="loading">query</button>
           </td>
         </tr>
 
@@ -42,6 +44,7 @@
           <td>
             <input v-model="receiver" placeholder="Receiver">
             <input v-model="transferTokenId" placeholder="Token Id">
+            <input v-model="transferTokenShares" placeholder="Shares">
             <button v-on:click="transfer" :disabled="loading">Transfer</button>
           </td>
         </tr>
@@ -88,7 +91,7 @@ async function initNear () {
   // Initializing our contract APIs by contract name and configuration
   const contract = await new nearAPI.Contract(walletConnection.account(), nearConfig.contractName, {
     // View methods are read-only – they don't modify the state, but usually return some value
-    viewMethods: ['get_token_owner', 'name'],
+    viewMethods: ['get_token_shares', 'name'],
     // Change methods can modify the state, but you don't receive the returned value when called
     changeMethods: ['mint_to', 'transfer'],
     // Sender is the account ID to initialize transactions.
@@ -114,8 +117,11 @@ export default {
     currentUser: null,
     wallet: null,
     tokenId: null,
+    queryAccountId: null,
+    mintSupply: null,
     receiver: null,
     transferTokenId: null,
+    transferTokenShares: null,
     output: null,
     loading: false
   }),
@@ -125,6 +131,10 @@ export default {
     this.nearConfig = near.nearConfig
     this.currentUser = near.currentUser
     this.wallet = near.walletConnection
+
+    if (this.currentUser) {
+      this.queryAccountId = this.currentUser.accountId
+    }
   },
   methods: {
     nearLogin () {
@@ -142,24 +152,28 @@ export default {
         this.loading = true
 
         const tokenId = await this.contract.mint_to(
-          { owner_id: this.currentUser.accountId },
+          {
+            owner_id: this.currentUser.accountId,
+            token_total_supply: this.mintSupply
+          },
           BOATLOAD_OF_GAS
         )
         console.log('minted', tokenId)
-        this.output = `Minted token ${tokenId}`
+        this.output = `Minted ${this.mintSupply} token ${tokenId} to ${this.currentUser.accountId}`
       } finally {
         this.loading = false
       }
     },
-    async getOwner () {
+    async getShares () {
       try {
         this.loading = true
 
-        const owner = await this.contract.get_token_owner({
-          token_id: this.tokenId
+        const shares = await this.contract.get_token_shares({
+          token_id: this.tokenId,
+          account_id: this.queryAccountId
         })
 
-        this.output = `Owner is ${owner}`
+        this.output = `${shares} shares`
       } catch (err) {
         if (err.message.includes('not present in the storage')) {
           this.output = 'Error: Token not exist'
@@ -176,7 +190,8 @@ export default {
 
         await this.contract.transfer({
           new_owner_id: this.receiver,
-          token_id: this.transferTokenId
+          token_id: this.transferTokenId,
+          transfer_shares: this.transferTokenShares
         })
         this.output = `Token ${this.transferTokenId} transferred to ${this.receiver}`
       } catch (err) {
@@ -184,6 +199,8 @@ export default {
           this.output = 'Error: Token not exist'
         } else if (err.message.includes('Token is not owned by the caller')) {
           this.output = 'Error: Token not owned by you'
+        } else if (err.message.includes('Not enough shares')) {
+          this.output = 'Error: No enough shares'
         } else {
           console.log(err)
         }
